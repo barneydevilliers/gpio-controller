@@ -3,49 +3,163 @@
 import serial
 import time
 
+class Commands:
+  COMMAND_NONE                   =  0,
+  COMMAND_RESET                  =  1,
+  COMMAND_RESET_SUCCESS          =  2,
+  COMMAND_FIRMWARE_INFO          =  3,
+  COMMAND_FIRMWARE_INFO_RESPONSE =  4,
+  COMMAND_RESPONSE_SUCCESS       =  5,
+  COMMAND_RESPONSE_FAILURE       =  6,
+  COMMAND_GPIO_SET_MODE          =  7,
+  COMMAND_GPIO_WRITE             =  8,
+  COMMAND_GPIO_READ              =  9,
+  COMMAND_GPIO_READ_RESPONSE     = 10,
+  COMMAND_SERVO_MOVE             = 11,
+  COMMAND_RFID_READ_EVENT        = 12
+
+
+
+def createAndOpenPort():
+	port = serial.Serial(
+		port='/dev/ttyACM0',
+		baudrate=57600,
+		parity=serial.PARITY_NONE,
+		stopbits=serial.STOPBITS_ONE,
+		bytesize=serial.EIGHTBITS
+		)
+	port.flushInput()
+	port.flushOutput()
+	#time.sleep(1) #might become required to wait for the board to power up.
+	#perhaps just send a reset response packet to ensure all is well before continuing.
+	return port
+
+def sendCommand(port, command, data = None):
+	packet = [0xA5, Commands.COMMAND_SERVO_MOVE[0], 2, 13, 90]
+
+	#Append BCC value
+	bcc = 0;
+	for byte in packet:
+		bcc ^= byte
+		print str(byte) + " : " + str(bcc)
+	packet.append(bcc)
+	
+	print str(packet)
+	#Send to port
+	packet_raw = bytearray(packet)
+	port.write(packet_raw)
+
+
+class ReceivedPacket:
+	MAX_COMMAND_DATA  = 64
+        START_OF_PACKET_BYTE = 0xA5
+	
+	STATE_START_OF_PACKET  = 0,
+	STATE_COMMAND          = 1,
+	STATE_DATA_LENGTH      = 2,
+	STATE_DATA_PAYLOAD     = 3,
+	STATE_BCC              = 4
+	  
+	state = STATE_START_OF_PACKET
+	received_command = Commands.COMMAND_NONE
+	received_data    = []
+	bcc = 0
+	indicated_data_length = 0;
+	processed_data_length = 0;
+	
+	complete = False
+
+	def processReceivedBytes(self,port):
+		
+		
+		
+		#Loop until all bytes in the serial receive buffer has been consumed.
+		while port.inWaiting() > 0:
+			incomingByte = ord(port.read(1))
+			
+			print "got byte " + hex(incomingByte)
+
+	    #//Timeout calculations
+	    #if (COMMAND_RECEIVER_INTERCHAR_TIMEOUT < timeSince(timeSinceLastRx))
+	    #{
+	    #  //Timeout all packets if there was a break in comms for more than the interchar timeout
+	    #  state = STATE_START_OF_PACKET;
+	    #}
+	    #timeSinceLastRx = millis(); //Update time to now since we got a new byte
+
+			#Update the packet bcc calculation
+			self.bcc ^= incomingByte;
+
+			if self.state == ReceivedPacket.STATE_START_OF_PACKET:
+				if (ReceivedPacket.START_OF_PACKET_BYTE == incomingByte): #check if we got a good start of packet byte
+					self.bcc = 0
+					self.bcc ^= incomingByte #restart the bcc calculation here.
+					self.state = ReceivedPacket.STATE_COMMAND
+					
+			elif self.state == ReceivedPacket.STATE_COMMAND:
+				self.received_command = incomingByte
+				self.state = ReceivedPacket.STATE_DATA_LENGTH
+
+
+			elif self.state == ReceivedPacket.STATE_DATA_LENGTH:
+				self.indicated_data_length = incomingByte
+				self.processed_data_length = 0 #reset the processed data length before we get the data
+
+				if (0 == self.indicated_data_length):
+				  #No data, simply go to BCC field.
+				  self.state = ReceivedPacket.STATE_BCC
+				elif (ReceivedPacket.MAX_COMMAND_DATA >= self.indicated_data_length): #Check that we can hold that much data
+				  #All good to get the payload
+				  self.state = ReceivedPacket.STATE_DATA_PAYLOAD
+				else:
+				  #Reject this packet immediately
+				  self.state = ReceivedPacket.STATE_START_OF_PACKET
+
+			elif self.state == ReceivedPacket.STATE_DATA_PAYLOAD:
+				self.received_data[processed_data_length] = incomingByte
+				self.processed_data_length += 1
+				if (self.processed_data_length < self.indicated_data_length):
+				  #remain here getting payload data
+				  self.state = ReceivedPacket.STATE_DATA_PAYLOAD
+				else:
+				  #done with the payload. Move on.
+				  self.received_data_length = self.processed_data_length
+				  self.state = ReceivedPacket.STATE_BCC
+
+			elif self.state == ReceivedPacket.STATE_BCC:
+				#Perform BCC Check
+				if (0 == self.bcc):
+				  #all is well, the the packet for futher processing and start state machine again.
+				  print("Got a good response packet")
+				  self.complete = True
+				  self.state = ReceivedPacket.STATE_START_OF_PACKET
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
 	
 
 
-port = serial.Serial(
-	port='/dev/ttyACM0',
-	baudrate=57600,
-	parity=serial.PARITY_NONE,
-	stopbits=serial.STOPBITS_ONE,
-	bytesize=serial.EIGHTBITS
-)
-port.flushInput()
-port.flushOutput()
-time.sleep(2)
-
-packet = [0xA5, 11, 2, 13, 90]
-
-#Append BCC value
-bcc = 0;
-for byte in packet:
-	bcc ^= byte
-	print str(byte) + " : " + str(bcc)
-packet.append(bcc)
-	
-
-packet_raw = bytearray(packet)
-
-port.write(packet_raw)
+port = createAndOpenPort();
+sendCommand(port,Commands.COMMAND_SERVO_MOVE)
 
 
-print str(packet)
 
 
-time.sleep(1)
+rxPacket = ReceivedPacket();
 
-while port.inWaiting() > 0:
-	received_byte = port.read(1)
-	print "got byte " + hex(ord(received_byte))
-
-time.sleep(1)
-
-while port.inWaiting() > 0:
-	received_byte = port.read(1)
-	print "got byte " + hex(ord(received_byte))
-
-
-#port.write(
+while (rxPacket.complete == False):
+	rxPacket.processReceivedBytes(port)
+	if rxPacket.complete == False:
+		time.sleep(0.05)
