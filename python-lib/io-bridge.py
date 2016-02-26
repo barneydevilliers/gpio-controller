@@ -34,10 +34,16 @@ def createAndOpenPort():
 	#perhaps just send a reset response packet to ensure all is well before continuing.
 	return port
 
-def sendCommand(port, command, data = None):
-	packet = [0xA5, Commands.COMMAND_SERVO_MOVE[0], 2, 13, 90]
-
-	#Append BCC value
+def sendCommand(port, command, data = []):
+	#Build packet
+	packet = []
+	packet.append(0xA5)       #start of packet byte
+	packet.append(command[0]) #command byte
+	packet.append(len(data))  #data length
+	for byte in data:         #data contents if any
+		packet.append(byte)
+	
+	#Calculate and Append BCC value
 	bcc = 0;
 	for byte in packet:
 		bcc ^= byte
@@ -45,6 +51,7 @@ def sendCommand(port, command, data = None):
 	packet.append(bcc)
 	
 	print str(packet)
+	
 	#Send to port
 	packet_raw = bytearray(packet)
 	port.write(packet_raw)
@@ -146,20 +153,31 @@ class ReceivedPacket:
 	
 	
 	
-	
-	
+def readResponse():
+	rxPacket = ReceivedPacket();
+	while (rxPacket.complete == False):
+		rxPacket.processReceivedBytes(port)
+		if rxPacket.complete == False:
+			time.sleep(0.05)
 	
 
 
 port = createAndOpenPort();
-sendCommand(port,Commands.COMMAND_SERVO_MOVE)
+
+sendCommand(port,Commands.COMMAND_SERVO_MOVE, [ 10, 90])
+readResponse()
+time.sleep(0.5)
+sendCommand(port,Commands.COMMAND_SERVO_MOVE, [ 10, 30])
+readResponse()
+time.sleep(0.5)
+sendCommand(port,Commands.COMMAND_SERVO_MOVE, [ 10, 150])
+readResponse()
 
 
+#What about retries?
+
+#What about timeout on rx of packets?
+
+#gpio read event (after it was debounced)
 
 
-rxPacket = ReceivedPacket();
-
-while (rxPacket.complete == False):
-	rxPacket.processReceivedBytes(port)
-	if rxPacket.complete == False:
-		time.sleep(0.05)
