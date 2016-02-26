@@ -33,20 +33,22 @@ enum COMMAND_HANDLER_STATE
 
 enum COMMAND_INSTRUCTION
 {
-  COMMAND_NONE                =  0,
-  COMMAND_RESET               =  1,
-  COMMAND_GET_FIRMWARE_INFO   =  2,
-  COMMAND_RESPONSE_SUCCESS    =  3,
-  COMMAND_RESPONSE_FAILURE    =  4,  
+  COMMAND_NONE                   =  0,
+  COMMAND_RESET                 ,
+  COMMAND_RESET_SUCCESS         ,
+  COMMAND_FIRMWARE_INFO         ,
+  COMMAND_FIRMWARE_INFO_RESPONSE,
+  COMMAND_RESPONSE_SUCCESS      ,
+  COMMAND_RESPONSE_FAILURE      ,  
 
-  COMMAND_GPIO_SET_MODE       =  5,
-  COMMAND_GPIO_WRITE          =  6,
-  COMMAND_GPIO_READ           =  7,
-  COMMAND_GPIO_READ_RESPONSE  =  8,
+  COMMAND_GPIO_SET_MODE         ,
+  COMMAND_GPIO_WRITE            ,
+  COMMAND_GPIO_READ             ,
+  COMMAND_GPIO_READ_RESPONSE    ,
 
-  COMMAND_SERVO_MOVE          =  9,
+  COMMAND_SERVO_MOVE            ,
 
-  COMMAND_RFID_READ_EVENT     = 10,
+  COMMAND_RFID_READ_EVENT       ,
 };
 
 //-------------
@@ -60,13 +62,15 @@ void setup()
   //-----------------------
   Serial.begin(57600);
 
+  //Send reset command response to indicate we have successfully started up.
+  service_command_respond_simple(COMMAND_RESET_SUCCESS);
 }
 
 void loop()
 {
   service_command_receiver();
 
-  service_rfid_reader();
+  //service_rfid_reader();
 }
 
 //-----------------------
@@ -97,7 +101,7 @@ void service_command_processor()
     #warning todo COMMAND_RESET
       break;
       
-    case COMMAND_GET_FIRMWARE_INFO:
+    case COMMAND_FIRMWARE_INFO:
     #warning todo COMMAND_GET_FIRMWARE_INFO
       break;
       
@@ -205,7 +209,6 @@ void service_command_send_packet()
 
 void service_command_receiver()
 {
-
   static COMMAND_HANDLER_STATE state   = STATE_START_OF_PACKET;
   static byte indicated_data_length    = 0;
   static byte processed_data_length    = 0;
@@ -214,7 +217,7 @@ void service_command_receiver()
 
   //Loop until all bytes in the serial receive buffer has been consumed.
   while (Serial.available() > 0)
-  {
+  {    
     byte incomingByte = Serial.read();
 
     //Timeout calculations
@@ -225,15 +228,16 @@ void service_command_receiver()
     }
     timeSinceLastRx = millis(); //Update time to now since we got a new byte
 
-    //Always update the packet bcc calculation
+    //Update the packet bcc calculation
     bcc ^= incomingByte;
 
     switch (state)
     {
-      case STATE_START_OF_PACKET:
-        bcc = 0; //restart the bcc calculation here.
+      case STATE_START_OF_PACKET:        
         if (START_OF_PACKET_BYTE == incomingByte) //check if we got a good start of packet byte
         {
+          bcc = 0;
+          bcc ^= incomingByte; //restart the bcc calculation here.
           state = STATE_COMMAND;
         }
         break;
