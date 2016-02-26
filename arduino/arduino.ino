@@ -1,4 +1,3 @@
-
 #include <SPI.h>
 #include <MFRC522.h>
 #include <Servo.h>
@@ -15,12 +14,13 @@ byte nuidPICC[3]; // Init array that will store new NUID
 
 //SERVO RELATED
 //-------------
-#define SERVO_PIN 4
 Servo servo;
 
 
 //COMMAND HANDLER RELATED
 //-----------------------
+
+#define COMMAND_RECEIVER_INTERCHAR_TIMEOUT 200
 
 enum COMMAND_HANDLER_STATE
 {
@@ -54,11 +54,10 @@ enum COMMAND_INSTRUCTION
 
 void setup()
 {
-
-
-  //SERVO RELATED
-  //-------------
-  servo.attach(SERVO_PIN);
+  //-----------------------
+  //COMMAND HANDLER RELATED
+  //-----------------------
+  Serial.begin(57600);
 
 }
 
@@ -74,6 +73,7 @@ void loop()
 //-----------------------
 
 #define MAX_COMMAND_DATA 64
+#define START_OF_PACKET_BYTE 0xA5
 
 static COMMAND_INSTRUCTION received_command = COMMAND_NONE;
 static byte                received_data[MAX_COMMAND_DATA];
@@ -108,6 +108,16 @@ void service_command_processor()
       break;
       
     case COMMAND_SERVO_MOVE:
+      if (2 == received_data_length)
+      {
+        servoManage(received_data[0],received_data[1]);
+        service_command_respond_simple(COMMAND_RESPONSE_SUCCESS);
+      }
+      else
+      {
+        //Not the correct number of data bytes in payload.
+        service_command_respond_simple(COMMAND_RESPONSE_FAILURE);
+      }
       break;
 
     default:
@@ -127,10 +137,24 @@ void service_command_respond_simple(COMMAND_INSTRUCTION command)
   service_command_send_packet();
 }
 
+void service_command_respond_with_value(COMMAND_INSTRUCTION command, unsigned long value)
+{
+  //Define the simple packet
+  transmit_command = command;
+  memset(transmit_data, 0, MAX_COMMAND_DATA);
+  transmit_data[0] = 0xFF & (value >> 24);
+  transmit_data[1] = 0xFF & (value >> 16);
+  transmit_data[2] = 0xFF & (value >>  8);
+  transmit_data[3] = 0xFF & (value);
+  transmit_data_length = 4;
+
+  service_command_send_packet();
+}
+
 void service_command_send_packet()
 {
   //First we need to create the bcc value
-  byte bcc = 0xA5;
+  byte bcc = START_OF_PACKET_BYTE;
   bcc ^= transmit_command;
   bcc ^= transmit_data_length;
   byte index;
@@ -140,7 +164,7 @@ void service_command_send_packet()
   }
 
   //Build and send out the packet
-  Serial.write(0xA5);
+  Serial.write(START_OF_PACKET_BYTE);
   Serial.write(transmit_command);
   Serial.write(transmit_data_length);
   Serial.write(transmit_data,transmit_data_length);
@@ -150,26 +174,33 @@ void service_command_send_packet()
 void service_command_receiver()
 {
 
-  static COMMAND_HANDLER_STATE state = STATE_START_OF_PACKET;
-  static byte indicated_data_length  = 0;
-  static byte processed_data_length  = 0;
-  static byte bcc                    = 0;
+  static COMMAND_HANDLER_STATE state   = STATE_START_OF_PACKET;
+  static byte indicated_data_length    = 0;
+  static byte processed_data_length    = 0;
+  static byte bcc                      = 0;
+  static unsigned long timeSinceLastRx = 0;
 
+  //Loop until all bytes in the serial receive buffer has been consumed.
   while (Serial.available() > 0)
   {
     byte incomingByte = Serial.read();
 
+    //Timeout calculations
+    if (COMMAND_RECEIVER_INTERCHAR_TIMEOUT < timeSince(timeSinceLastRx))
+    {
+      //Timeout all packets if there was a break in comms for more than the interchar timeout
+      state = STATE_START_OF_PACKET;
+    }
+    timeSinceLastRx = millis(); //Update time to now since we got a new byte
+
     //Always update the packet bcc calculation
     bcc ^= incomingByte;
-
-
-#warning do interpacket timeout check.
 
     switch (state)
     {
       case STATE_START_OF_PACKET:
         bcc = 0; //restart the bcc calculation here.
-        if (0xA5 == incomingByte) //check if we got a good start of packet byte
+        if (START_OF_PACKET_BYTE == incomingByte) //check if we got a good start of packet byte
         {
           state = STATE_COMMAND;
         }
@@ -239,10 +270,13 @@ void service_command_receiver()
 //SERVO RELATED
 //-------------
 
-void servoManage(int newPosition)
+
+// \param servo_pin Pin to be used for servo
+// \param angle     Angle to send servo to
+void servoManage(byte servo_pin, byte angle)
 {
-  servo.write(newPosition);
-  delay(15);
+  servo.attach(servo_pin);  
+  servo.write(angle);
 }
 
 
@@ -320,3 +354,27 @@ void printDec(byte *buffer, byte bufferSize)
     Serial.print(buffer[i], DEC);
   }
 }
+
+//---------
+// UTILITY
+//---------
+
+unsigned long timeSince(unsigned long timestamp)
+{
+  unsigned long time_now = millis();
+
+  if (timestamp <= time_now)
+  {
+    //Normal case use values as is.
+    return (time_now - timestamp);
+  }
+  else
+  {
+    //Wraparound occurred.
+    timestamp = 0xFFFFFFFFL - timestamp; //get the time before the wrap
+    return (time_now + timestamp);       //add time now plus the time before the wrap.
+  }
+
+  
+}
+
