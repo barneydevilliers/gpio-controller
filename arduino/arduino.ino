@@ -37,15 +37,16 @@ enum COMMAND_INSTRUCTION
   COMMAND_RESET               =  1,
   COMMAND_GET_FIRMWARE_INFO   =  2,
   COMMAND_RESPONSE_SUCCESS    =  3,
-  COMMAND_RESPONSE_FAILURE    =  4,
+  COMMAND_RESPONSE_FAILURE    =  4,  
 
-  COMMAND_GPIO_SET_DIRECTION  =  5,
+  COMMAND_GPIO_SET_MODE       =  5,
   COMMAND_GPIO_WRITE          =  6,
   COMMAND_GPIO_READ           =  7,
+  COMMAND_GPIO_READ_RESPONSE  =  8,
 
-  COMMAND_SERVO_MOVE          =  8,
+  COMMAND_SERVO_MOVE          =  9,
 
-  COMMAND_RFID_READ_EVENT     =  9,
+  COMMAND_RFID_READ_EVENT     = 10,
 };
 
 //-------------
@@ -93,19 +94,50 @@ void service_command_processor()
       break;
       
     case COMMAND_RESET:
+    #warning todo COMMAND_RESET
       break;
       
     case COMMAND_GET_FIRMWARE_INFO:
+    #warning todo COMMAND_GET_FIRMWARE_INFO
       break;
       
-    case COMMAND_GPIO_SET_DIRECTION:
+    case COMMAND_GPIO_SET_MODE:
+      if (2 == received_data_length)
+      {
+        pinMode(received_data[0],received_data[1]);
+        service_command_respond_simple(COMMAND_RESPONSE_SUCCESS);
+      }
+      else
+      {
+        //Not the correct number of data bytes in payload.
+        service_command_respond_simple(COMMAND_RESPONSE_FAILURE);
+      }
       break;
       
     case COMMAND_GPIO_WRITE:
+      if (2 == received_data_length)
+      {
+        digitalWrite(received_data[0],received_data[1]);
+        service_command_respond_simple(COMMAND_RESPONSE_SUCCESS);
+      }
+      else
+      {
+        //Not the correct number of data bytes in payload.
+        service_command_respond_simple(COMMAND_RESPONSE_FAILURE);
+      }
       break;
       
     case COMMAND_GPIO_READ:
-      break;
+      if (1 == received_data_length)
+      {
+        byte pinValue = digitalRead(received_data[0]);
+        service_command_respond_with_value(COMMAND_GPIO_READ_RESPONSE,pinValue);
+      }
+      else
+      {
+        //Not the correct number of data bytes in payload.
+        service_command_respond_simple(COMMAND_RESPONSE_FAILURE);
+      }
       
     case COMMAND_SERVO_MOVE:
       if (2 == received_data_length)
