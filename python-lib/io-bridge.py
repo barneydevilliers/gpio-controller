@@ -140,17 +140,7 @@ class ReceivedPacket:
 				  print("Got a good response packet")
 				  self.complete = True
 				  self.state = ReceivedPacket.STATE_START_OF_PACKET
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
+		
 	
 	
 def readResponse():
@@ -161,6 +151,13 @@ def readResponse():
 			time.sleep(0.05)
 	
 
+
+
+class dispenserManager():
+	STATE_STARTUP            = 1
+	STATE_WAITING_FOR_TAG    = 2
+	STATE_WAITING_FOR_BUTTON = 3
+	STATE_WAITING_FOR_SERVO  = 4
 
 port = createAndOpenPort();
 
