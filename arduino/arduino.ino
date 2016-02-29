@@ -3,6 +3,7 @@
 #include <Servo.h>
 
 
+
 //RFID RELATED
 //------------
 #define SS_PIN 10
@@ -46,7 +47,158 @@ enum COMMAND_INSTRUCTION
   COMMAND_GPIO_READ_RESPONSE     = 10,
   COMMAND_SERVO_MOVE             = 11,
   COMMAND_RFID_READ_EVENT        = 12,
+  COMMAND_GPIO_INPUT_EVENT       = 13,
 };
+
+
+
+
+//---------
+// UTILITY
+//---------
+
+unsigned long timeSince(unsigned long timestamp)
+{
+  unsigned long time_now = millis();
+
+  if (timestamp <= time_now)
+  {
+    //Normal case use values as is.
+    return (time_now - timestamp);
+  }
+  else
+  {
+    //Wraparound occurred.
+    timestamp = 0xFFFFFFFFL - timestamp; //get the time before the wrap
+    return (time_now + timestamp);       //add time now plus the time before the wrap.
+  }
+}
+
+#define DEBOUNCE_TIME 100
+enum PIN_STATE
+{
+  PIN_STATE_LOW,
+  PIN_STATE_DEBOUNCING_TO_HIGH,
+  PIN_STATE_HIGH,
+  PIN_STATE_DEBOUNCING_TO_LOW
+};
+
+enum PIN_EVENT
+{
+  PIN_EVENT_NONE,
+  PIN_EVENT_HIGH,
+  PIN_EVENT_LOW
+};
+
+
+class InputPinMonitor
+{
+  public:
+
+    byte Pin()
+    {
+      return m_pin;
+    }
+
+    bool Active()
+    {
+      return m_active;
+    }
+
+    InputPinMonitor()
+    {
+      Configure(0, false);
+    }
+    
+    void Configure(byte pin, bool active)
+    {
+      m_active = active;
+      if (m_active)
+      {
+        m_pin = pin;
+
+        pinMode(m_pin, INPUT);
+        if (HIGH == digitalRead(m_pin))
+        {
+          m_state = PIN_STATE_HIGH;
+        }
+        else
+        {
+          m_state = PIN_STATE_LOW;
+        }
+      }
+    }
+
+    PIN_EVENT Service()
+    {
+      if (m_active)
+      {
+        switch (m_state)
+        {
+          case PIN_STATE_LOW:
+            if (HIGH == digitalRead(m_pin))
+            {
+              m_debounceStartTimeStamp = millis();
+              m_state = PIN_STATE_DEBOUNCING_TO_HIGH;
+            }
+            break;
+
+          case PIN_STATE_DEBOUNCING_TO_HIGH:
+            if (DEBOUNCE_TIME < timeSince(m_debounceStartTimeStamp))
+            {
+              if (HIGH == digitalRead(m_pin))
+              {
+                m_state = PIN_STATE_HIGH;
+                return PIN_EVENT_HIGH;
+              }
+              else
+              {
+                //Debounced failed.  Seemed like spurious signal.  Return to previous state.
+                m_state = PIN_STATE_LOW;
+              }
+            }
+            break;
+
+          case PIN_STATE_HIGH:
+            if (HIGH == digitalRead(m_pin))
+            {
+              m_debounceStartTimeStamp = millis();
+              m_state = PIN_STATE_DEBOUNCING_TO_LOW;
+            }
+            break;
+
+          case PIN_STATE_DEBOUNCING_TO_LOW:
+            if (DEBOUNCE_TIME < timeSince(m_debounceStartTimeStamp))
+            {
+              if (LOW == digitalRead(m_pin))
+              {
+                m_state = PIN_STATE_LOW;
+                return PIN_EVENT_LOW;
+              }
+              else
+              {
+                //Debounced failed.  Seemed like spurious signal.  Return to previous state.
+                m_state = PIN_STATE_HIGH;
+              }
+            }
+            break;
+
+          default:
+            m_state = PIN_STATE_LOW;
+            break;
+        }
+      }
+      return PIN_EVENT_NONE;
+    }
+
+  private:
+    bool      m_active;
+    PIN_STATE m_state;
+    byte      m_pin;
+    long      m_debounceStartTimeStamp;
+};
+
+
 
 //-------------
 //MAIN ELEMENTS
@@ -67,8 +219,64 @@ void loop()
 {
   service_command_receiver();
 
+  service_pin_monitor();
+
   //service_rfid_reader();
 }
+
+#define INPUT_MONITORS 10
+static InputPinMonitor monitors[INPUT_MONITORS];
+  
+bool configure_pin_monitor(byte pin)
+{
+  //Try to find a monitor that already monitors this pin.
+  for (int i = 0; i < INPUT_MONITORS; i++)
+  {
+    if (monitors[i].Pin() == pin)
+    {
+      //Already monitoring this pin.  Return success and exit.
+      return true;
+    }
+  }
+  //Try to find a monitor that already monitors this pin.
+  for (int i = 0; i < INPUT_MONITORS; i++)
+  {
+    if (!monitors[i].Active())
+    {
+      //Found an empty monitor, use it.
+      monitors[i].Configure(pin,true);
+      return true;
+    }
+  }
+  //Did not find one monitoring this pin or could find an empty one to start. Failure.
+  return false;
+}
+
+void service_pin_monitor()
+{
+
+
+  for (int i = 0; i < INPUT_MONITORS; i++)
+  {
+    PIN_EVENT event = monitors[i].Service();
+    switch (event)
+    {
+      case PIN_EVENT_HIGH:
+      {
+        long value = (monitors[i].Pin() << 8) + 1;
+        service_command_respond_with_value(COMMAND_GPIO_INPUT_EVENT, value);
+        break;
+      }
+      case PIN_EVENT_LOW:
+      {
+         long value = (monitors[i].Pin() << 8) + 0;
+        service_command_respond_with_value(COMMAND_GPIO_INPUT_EVENT, value);
+        break;       
+      }
+    }
+  }
+}
+
 
 //-----------------------
 //COMMAND HANDLER RELATED
@@ -93,20 +301,35 @@ void service_command_processor()
       //Nothing to be done.  Simply acknowledge it.
       service_command_respond_simple(COMMAND_RESPONSE_SUCCESS);
       break;
-      
+
     case COMMAND_RESET:
-    #warning todo COMMAND_RESET
+#warning todo COMMAND_RESET
       break;
-      
+
     case COMMAND_FIRMWARE_INFO:
-    #warning todo COMMAND_GET_FIRMWARE_INFO
+#warning todo COMMAND_GET_FIRMWARE_INFO
       break;
-      
+
     case COMMAND_GPIO_SET_MODE:
       if (2 == received_data_length)
       {
-        pinMode(received_data[0],received_data[1]);
-        service_command_respond_simple(COMMAND_RESPONSE_SUCCESS);
+        if (OUTPUT == received_data[1])
+        {
+          pinMode(received_data[0], received_data[1]);
+          service_command_respond_simple(COMMAND_RESPONSE_SUCCESS);
+        }
+        else
+        {
+          //Configure input pin event monitor
+          if (true == configure_pin_monitor(received_data[0]))
+          {
+            service_command_respond_simple(COMMAND_RESPONSE_SUCCESS);
+          }
+          else
+          {
+            service_command_respond_simple(COMMAND_RESPONSE_FAILURE);
+          }
+        }
       }
       else
       {
@@ -114,11 +337,11 @@ void service_command_processor()
         service_command_respond_simple(COMMAND_RESPONSE_FAILURE);
       }
       break;
-      
+
     case COMMAND_GPIO_WRITE:
       if (2 == received_data_length)
       {
-        digitalWrite(received_data[0],received_data[1]);
+        digitalWrite(received_data[0], received_data[1]);
         service_command_respond_simple(COMMAND_RESPONSE_SUCCESS);
       }
       else
@@ -127,23 +350,23 @@ void service_command_processor()
         service_command_respond_simple(COMMAND_RESPONSE_FAILURE);
       }
       break;
-      
+
     case COMMAND_GPIO_READ:
       if (1 == received_data_length)
       {
         byte pinValue = digitalRead(received_data[0]);
-        service_command_respond_with_value(COMMAND_GPIO_READ_RESPONSE,pinValue);
+        service_command_respond_with_value(COMMAND_GPIO_READ_RESPONSE, pinValue);
       }
       else
       {
         //Not the correct number of data bytes in payload.
         service_command_respond_simple(COMMAND_RESPONSE_FAILURE);
       }
-      
+
     case COMMAND_SERVO_MOVE:
       if (2 == received_data_length)
       {
-        servoManage(received_data[0],received_data[1]);
+        servoManage(received_data[0], received_data[1]);
         service_command_respond_simple(COMMAND_RESPONSE_SUCCESS);
       }
       else
@@ -200,7 +423,7 @@ void service_command_send_packet()
   Serial.write(START_OF_PACKET_BYTE);
   Serial.write(transmit_command);
   Serial.write(transmit_data_length);
-  Serial.write(transmit_data,transmit_data_length);
+  Serial.write(transmit_data, transmit_data_length);
   Serial.write(bcc);
 }
 
@@ -214,7 +437,7 @@ void service_command_receiver()
 
   //Loop until all bytes in the serial receive buffer has been consumed.
   while (Serial.available() > 0)
-  {    
+  {
     byte incomingByte = Serial.read();
 
     //Timeout calculations
@@ -230,7 +453,7 @@ void service_command_receiver()
 
     switch (state)
     {
-      case STATE_START_OF_PACKET:        
+      case STATE_START_OF_PACKET:
         if (START_OF_PACKET_BYTE == incomingByte) //check if we got a good start of packet byte
         {
           bcc = 0;
@@ -308,7 +531,7 @@ void service_command_receiver()
 // \param angle     Angle to send servo to
 void servoManage(byte servo_pin, byte angle)
 {
-  servo.attach(servo_pin);  
+  servo.attach(servo_pin);
   servo.write(angle);
 }
 
@@ -388,26 +611,5 @@ void printDec(byte *buffer, byte bufferSize)
   }
 }
 
-//---------
-// UTILITY
-//---------
 
-unsigned long timeSince(unsigned long timestamp)
-{
-  unsigned long time_now = millis();
-
-  if (timestamp <= time_now)
-  {
-    //Normal case use values as is.
-    return (time_now - timestamp);
-  }
-  else
-  {
-    //Wraparound occurred.
-    timestamp = 0xFFFFFFFFL - timestamp; //get the time before the wrap
-    return (time_now + timestamp);       //add time now plus the time before the wrap.
-  }
-
-  
-}
 
