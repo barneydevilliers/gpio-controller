@@ -16,8 +16,8 @@ class Commands:
   COMMAND_GPIO_READ              =  9,
   COMMAND_GPIO_READ_RESPONSE     = 10,
   COMMAND_SERVO_MOVE             = 11,
-  COMMAND_RFID_READ_EVENT        = 12
-
+  COMMAND_RFID_READ_EVENT        = 12,
+  COMMAND_GPIO_INPUT_EVENT       = 13
 
 
 def createAndOpenPort():
