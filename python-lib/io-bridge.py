@@ -159,6 +159,16 @@ class dispenserManager():
 	STATE_WAITING_FOR_BUTTON = 3
 	STATE_WAITING_FOR_SERVO  = 4
 
+
+
+	def serviceStateMachine():
+		if self.state == STATE_STARTUP:
+			
+		elif self.state == STATE_WAITING_FOR_TAG:
+                elif self.state == STATE_WAITING_FOR_BUTTON:
+                elif self.state == STATE_WAITING_FOR_SERVO:
+
+
 port = createAndOpenPort();
 
 sendCommand(port,Commands.COMMAND_SERVO_MOVE, [ 10, 90])
