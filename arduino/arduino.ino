@@ -74,7 +74,7 @@ unsigned long timeSince(unsigned long timestamp)
   }
 }
 
-#define DEBOUNCE_TIME 100
+#define DEBOUNCE_TIME 250
 enum PIN_STATE
 {
   PIN_STATE_LOW,
@@ -318,7 +318,7 @@ void service_command_processor()
           pinMode(received_data[0], received_data[1]);
           service_command_respond_simple(COMMAND_RESPONSE_SUCCESS);
         }
-        else
+        else if (INPUT == received_data[1])
         {
           //Configure input pin event monitor
           if (true == configure_pin_monitor(received_data[0]))
@@ -329,6 +329,10 @@ void service_command_processor()
           {
             service_command_respond_simple(COMMAND_RESPONSE_FAILURE);
           }
+        }
+        else
+        {
+          service_command_respond_simple(COMMAND_RESPONSE_FAILURE);
         }
       }
       else

@@ -5,21 +5,22 @@ import time
 from time import time
 from time import sleep
 
-class Commands:
-  COMMAND_NONE                   =  0,
-  COMMAND_RESET                  =  1,
-  COMMAND_RESET_SUCCESS          =  2,
-  COMMAND_FIRMWARE_INFO          =  3,
-  COMMAND_FIRMWARE_INFO_RESPONSE =  4,
-  COMMAND_RESPONSE_SUCCESS       =  5,
-  COMMAND_RESPONSE_FAILURE       =  6,
-  COMMAND_GPIO_SET_MODE          =  7,
-  COMMAND_GPIO_WRITE             =  8,
-  COMMAND_GPIO_READ              =  9,
-  COMMAND_GPIO_READ_RESPONSE     = 10,
-  COMMAND_SERVO_MOVE             = 11,
-  COMMAND_RFID_READ_EVENT        = 12,
-  COMMAND_GPIO_INPUT_EVENT       = 13
+CommandIds = {
+  "COMMAND_NONE"                   :0,
+  "COMMAND_RESET"                  :1,
+  "COMMAND_RESET_SUCCESS"          :2,
+  "COMMAND_FIRMWARE_INFO"          :3,
+  "COMMAND_FIRMWARE_INFO_RESPONSE" :4,
+  "COMMAND_RESPONSE_SUCCESS"       :5,
+  "COMMAND_RESPONSE_FAILURE"       :6,
+  "COMMAND_GPIO_SET_MODE"          :7,
+  "COMMAND_GPIO_WRITE"             :8,
+  "COMMAND_GPIO_READ"              :9,
+  "COMMAND_GPIO_READ_RESPONSE"     :10,
+  "COMMAND_SERVO_MOVE"             :11,
+  "COMMAND_RFID_READ_EVENT"        :12,
+  "COMMAND_GPIO_INPUT_EVENT"       :13
+}
 
 
 def TimeSince(timestamp):
@@ -36,7 +37,7 @@ class ReceivedPacket:
 	STATE_BCC              = 4
 	  
 	state = STATE_START_OF_PACKET
-	received_command = Commands.COMMAND_NONE
+	received_command = CommandIds["COMMAND_NONE"]
 	received_data    = []
 	bcc = 0
 	indicated_data_length = 0
@@ -46,12 +47,10 @@ class ReceivedPacket:
 	complete = False
 
 	def processReceivedBytes(self,port):
-		
-		
-		
 		#Loop until all bytes in the serial receive buffer has been consumed.
 		while port.inWaiting() > 0:
 			incomingByte = ord(port.read(1))
+			#print incomingByte
 
 			#Packet Timeout calculations
 			if 0.2 < TimeSince(self.packetStartTime):
@@ -82,13 +81,15 @@ class ReceivedPacket:
 				elif (ReceivedPacket.MAX_COMMAND_DATA >= self.indicated_data_length):
 					#Check that we can hold that much data
 				  	#All good to get the payload
+					self.received_data = []
+					self.processed_data_length = 0
 				  	self.state = ReceivedPacket.STATE_DATA_PAYLOAD
 				else:
 				  	#Reject this packet immediately
 				  	self.state = ReceivedPacket.STATE_START_OF_PACKET
 
 			elif self.state == ReceivedPacket.STATE_DATA_PAYLOAD:
-				self.received_data[processed_data_length] = incomingByte
+				self.received_data.append(incomingByte)
 				self.processed_data_length += 1
 				if (self.processed_data_length < self.indicated_data_length):
 				  	#remain here getting payload data
@@ -128,6 +129,11 @@ class PortProtocol:
 		self.port.flushInput()
 		self.port.flushOutput()
 
+	def displayReceivedCommand(self, Command, Data):
+		for commandName, commandId in CommandIds.iteritems():
+		    	if commandId == Command:
+				print commandName + " : " +str(Data)
+		
 
 	def readResponse(self):
 		startTime = time()
@@ -138,6 +144,8 @@ class PortProtocol:
                 	Complete, Command, Data = self.rxPacket.processReceivedBytes(self.port)
                 	if Complete == False:
 				sleep(0.05)
+		if Complete == True:
+			self.displayReceivedCommand(Command,Data)
 		return (Complete, Command, Data)
 
 
@@ -146,11 +154,11 @@ class PortProtocol:
 		Command  = None
 		Data     = None
 		Attempts = 0
-		while (Command != Commands.COMMAND_RESPONSE_SUCCESS[0]) & (Attempts < 10):
+		while (Command != CommandIds["COMMAND_RESPONSE_SUCCESS"]) & (Attempts < 3):
 			self.sendCommand(command, data)
 			Complete, Command, Data = self.readResponse()
 			Attempts += 1
-		if Command == Commands.COMMAND_RESPONSE_SUCCESS[0]:
+		if Command == CommandIds["COMMAND_RESPONSE_SUCCESS"]:
 			return True
 		else:
 			return False
@@ -159,7 +167,7 @@ class PortProtocol:
 		#Build packet
 		packet = []
 		packet.append(0xA5)       #start of packet byte
-		packet.append(command[0]) #command byte
+		packet.append(command) #command byte
 		packet.append(len(data))  #data length
 		for byte in data:         #data contents if any
 			packet.append(byte)
@@ -170,7 +178,7 @@ class PortProtocol:
 			bcc ^= byte
 		packet.append(bcc)
 	
-		print "sending " + str(packet)
+		#print "sending " + str(packet)
 	
 		#Send to port
 		packet_raw = bytearray(packet)
@@ -202,14 +210,26 @@ port = PortProtocol();
 port.createAndOpenPort()
 
 
-print port.sendAndConfirmCommand(Commands.COMMAND_SERVO_MOVE, [ 10, 90])
-#sleep(0.5)
-print port.sendAndConfirmCommand(Commands.COMMAND_SERVO_MOVE, [ 10, 30])
-#sleep(0.5)
-print port.sendAndConfirmCommand(Commands.COMMAND_SERVO_MOVE, [ 10, 150])
+#1 is OUTPUT
+#0 is INPUT
+port.sendAndConfirmCommand(CommandIds["COMMAND_GPIO_SET_MODE"], [ 30, 0])
+port.sendAndConfirmCommand(CommandIds["COMMAND_GPIO_SET_MODE"], [ 31, 0])
+port.sendAndConfirmCommand(CommandIds["COMMAND_GPIO_SET_MODE"], [ 32, 0])
+port.sendAndConfirmCommand(CommandIds["COMMAND_GPIO_SET_MODE"], [ 33, 0])
+port.sendAndConfirmCommand(CommandIds["COMMAND_GPIO_SET_MODE"], [ 34, 0])
+port.sendAndConfirmCommand(CommandIds["COMMAND_GPIO_SET_MODE"], [ 35, 0])
+port.sendAndConfirmCommand(CommandIds["COMMAND_GPIO_SET_MODE"], [ 36, 0])
+port.sendAndConfirmCommand(CommandIds["COMMAND_GPIO_SET_MODE"], [ 37, 0])
+port.sendAndConfirmCommand(CommandIds["COMMAND_GPIO_SET_MODE"], [ 38, 0])
+port.sendAndConfirmCommand(CommandIds["COMMAND_GPIO_SET_MODE"], [ 39, 0])
 
+while (True):
+	port.readResponse()
 
-#What about timeout on rx of packets?
+#print port.sendAndConfirmCommand(CommandIds["COMMAND_SERVO_MOVE"], [ 10, 90])
+#print port.sendAndConfirmCommand(CommandIds["COMMAND_SERVO_MOVE"], [ 10, 30])
+#print port.sendAndConfirmCommand(CommandIds["COMMAND_SERVO_MOVE"], [ 10, 150])
+
 
 #gpio read event (after it was debounced)
 
