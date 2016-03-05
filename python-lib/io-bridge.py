@@ -5,6 +5,66 @@ import time
 from time import time
 from time import sleep
 
+import MySQLdb
+from time import strftime
+
+
+
+class databaseInterface:
+	def getDatabaseConnection(self):
+    		database = MySQLdb.connect('server', 'root', 'root', "dispenser")
+    		return database
+
+	def getTagUserAuthorizedInfoFromNuid(self,nuid):
+		database = self.getDatabaseConnection()
+		selectTagInfo = "SELECT tagid, userid FROM dispenser.tags WHERE nuid='" + str(nuid) + "' AND authorized='authorized'"
+		cursor = database.cursor()
+		cursor.execute(selectTagInfo)
+		infoTuples = cursor.fetchall()
+		print "tag infoTuples=" + infoTuples
+		if len(infoTuples) == 0:
+			print "Tag not found or not authorized"
+			return False, None, None
+		tagid = infoTuples[0][0]
+		userid = infoTuples[0][1]
+		selectUserInfo = "SELECT userid FROM dispenser.users WHERE userid='" + str(userid) + "' AND authorized='authorized'"
+		cursor = database.cursor()
+                cursor.execute(selectUserInfo)
+                infoTuples = cursor.fetchall()
+		database.close()
+		print "user infoTuples=" + infoTuples
+		if len(infoTuples) == 0:
+			print "User not found or not authorized"
+                        return False, None, None
+		#If we get this far the tag and user is authorized"
+		return True, tagid, userid
+
+	def addTagEvent(self,nuid,tagid,userid,authorization):
+		database = self.getDatabaseConnection()
+		insertStatement = "INSERT INTO dispenser.tagevents (nuid, tagid, userid, timestamp, authorization) VALUES ('" + str(nuid) + "', '" + str(tagid) + "', '" + str(userid) + "', '" + datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S") + "', '" + str(authorization) +  "');"
+		cursor = database.cursor()
+                affectedRows = cursor.execute(insertStatement)
+		print "Affected " + str(affectedRows) + " rows"
+		database.close()
+                if affectedRows == 1:
+                        return True
+                else:
+                        return False
+
+
+	def addDispenseEvent(self,tagid,userid,productid):
+		database = self.getDatabaseConnection()
+                insertStatement = "INSERT INTO dispenser.dispenseevents (productid, tagid, userid, timestamp) VALUES ('" + str(productid) + "', '" + str(tagid) + "', '" + str(userid) + "', '" + datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S") + "');"
+                cursor = database.cursor()
+                affectedRows = cursor.execute(insertStatement)
+                print "Affected " + str(affectedRows) + " rows"
+		database.close()
+		if affectedRows == 1:
+			return True
+		else:
+			return False
+
+
 CommandIds = {
   "COMMAND_NONE"                   :0,
   "COMMAND_RESET"                  :1,
@@ -200,7 +260,7 @@ class dispenserManager():
 
 	def setup(self):
                 self.port = PortProtocol()
-		self.port.createAndOpenPort('/dev/ttyACM2')
+		self.port.createAndOpenPort('/dev/ttyACM0')
 		sleep(5)
 		self.port.sendAndConfirmCommand(CommandIds["COMMAND_SERVO_MOVE"], [ 10, 135])
 		return True
@@ -229,6 +289,8 @@ class dispenserManager():
 		elif self.state == dispenserManager.STATE_WAITING_FOR_TAG:
 			Command, Data = self.waitForEvents([ CommandIds["COMMAND_RFID_READ_EVENT"] ])
 			if CommandIds["COMMAND_RFID_READ_EVENT"] == Command:
+				db = DatabaseInterface()
+				db.addTagEvent(1,2,3)
 				print "Got Tag Number " + str(Data) + ", now we wait for a button"
 				self.state = dispenserManager.STATE_WAITING_FOR_BUTTON
 
