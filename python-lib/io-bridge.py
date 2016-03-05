@@ -117,7 +117,7 @@ class PortProtocol:
 
 	def createAndOpenPort(self):
 		self.port = serial.Serial(
-			port='/dev/ttyACM0',
+			port='/dev/ttyACM1',
 			baudrate=57600,
 			parity=serial.PARITY_NONE,
 			stopbits=serial.STOPBITS_ONE,
@@ -212,16 +212,16 @@ port.createAndOpenPort()
 
 #1 is OUTPUT
 #0 is INPUT
-port.sendAndConfirmCommand(CommandIds["COMMAND_GPIO_SET_MODE"], [ 30, 0])
-port.sendAndConfirmCommand(CommandIds["COMMAND_GPIO_SET_MODE"], [ 31, 0])
-port.sendAndConfirmCommand(CommandIds["COMMAND_GPIO_SET_MODE"], [ 32, 0])
-port.sendAndConfirmCommand(CommandIds["COMMAND_GPIO_SET_MODE"], [ 33, 0])
-port.sendAndConfirmCommand(CommandIds["COMMAND_GPIO_SET_MODE"], [ 34, 0])
-port.sendAndConfirmCommand(CommandIds["COMMAND_GPIO_SET_MODE"], [ 35, 0])
-port.sendAndConfirmCommand(CommandIds["COMMAND_GPIO_SET_MODE"], [ 36, 0])
-port.sendAndConfirmCommand(CommandIds["COMMAND_GPIO_SET_MODE"], [ 37, 0])
-port.sendAndConfirmCommand(CommandIds["COMMAND_GPIO_SET_MODE"], [ 38, 0])
-port.sendAndConfirmCommand(CommandIds["COMMAND_GPIO_SET_MODE"], [ 39, 0])
+#port.sendAndConfirmCommand(CommandIds["COMMAND_GPIO_SET_MODE"], [ 30, 0])
+#port.sendAndConfirmCommand(CommandIds["COMMAND_GPIO_SET_MODE"], [ 31, 0])
+#port.sendAndConfirmCommand(CommandIds["COMMAND_GPIO_SET_MODE"], [ 32, 0])
+#port.sendAndConfirmCommand(CommandIds["COMMAND_GPIO_SET_MODE"], [ 33, 0])
+#port.sendAndConfirmCommand(CommandIds["COMMAND_GPIO_SET_MODE"], [ 34, 0])
+#port.sendAndConfirmCommand(CommandIds["COMMAND_GPIO_SET_MODE"], [ 35, 0])
+#port.sendAndConfirmCommand(CommandIds["COMMAND_GPIO_SET_MODE"], [ 36, 0])
+#port.sendAndConfirmCommand(CommandIds["COMMAND_GPIO_SET_MODE"], [ 37, 0])
+#port.sendAndConfirmCommand(CommandIds["COMMAND_GPIO_SET_MODE"], [ 38, 0])
+#port.sendAndConfirmCommand(CommandIds["COMMAND_GPIO_SET_MODE"], [ 39, 0])
 
 while (True):
 	port.readResponse()
