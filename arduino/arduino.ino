@@ -228,9 +228,9 @@ void setup()
 
 void loop()
 {
-  //service_command_receiver();
+  service_command_receiver();
 
-  //service_pin_monitor();
+  service_pin_monitor();
 
   service_rfid_reader();
 }

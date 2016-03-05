@@ -74,15 +74,13 @@ class ReceivedPacket:
 			elif self.state == ReceivedPacket.STATE_DATA_LENGTH:
 				self.indicated_data_length = incomingByte
 				self.processed_data_length = 0 #reset the processed data length before we get the data
-
+                                self.received_data = []
 				if (0 == self.indicated_data_length):
 				  	#No data, simply go to BCC field.
 				  	self.state = ReceivedPacket.STATE_BCC
 				elif (ReceivedPacket.MAX_COMMAND_DATA >= self.indicated_data_length):
 					#Check that we can hold that much data
 				  	#All good to get the payload
-					self.received_data = []
-					self.processed_data_length = 0
 				  	self.state = ReceivedPacket.STATE_DATA_PAYLOAD
 				else:
 				  	#Reject this packet immediately
@@ -115,9 +113,9 @@ class PortProtocol:
 	port = None
         rxPacket = ReceivedPacket()
 
-	def createAndOpenPort(self):
+	def createAndOpenPort(self,deviceFileName = '/dev/ttyACM0'):
 		self.port = serial.Serial(
-			port='/dev/ttyACM1',
+			port=deviceFileName,
 			baudrate=57600,
 			parity=serial.PARITY_NONE,
 			stopbits=serial.STOPBITS_ONE,
@@ -191,26 +189,69 @@ class dispenserManager():
 	STATE_STARTUP            = 1
 	STATE_WAITING_FOR_TAG    = 2
 	STATE_WAITING_FOR_BUTTON = 3
-	STATE_WAITING_FOR_SERVO  = 4
+
+	port = None
+	state = None
+
+	def run(self):
+		self.state = dispenserManager.STATE_STARTUP
+		while(True):
+			self.serviceStateMachine()
+
+	def setup(self):
+                self.port = PortProtocol()
+		self.port.createAndOpenPort('/dev/ttyACM2')
+		sleep(5)
+		self.port.sendAndConfirmCommand(CommandIds["COMMAND_SERVO_MOVE"], [ 10, 135])
+		return True
+
+	def waitForEvents(self, events = []):
+		while(True): #perhaps we need to have a timeout here?
+			Complete, Command, Data = self.port.readResponse()
+			if Complete:
+				if events == []:
+					#Simply return event if we don't look for anything specific
+					return Command, Data
+				if Command in events:
+					#Return the event if that was what we were looking for
+					return Command, Data
+				#Else keep on waiting
+
+	def serviceStateMachine(self):
+		if self.state == dispenserManager.STATE_STARTUP:
+			if True == self.setup():
+				print "Setup complete"
+				print "Waiting for a Tag"
+				self.state = dispenserManager.STATE_WAITING_FOR_TAG
+			else:
+				print "Setup failed"
+				exit(1)
+		elif self.state == dispenserManager.STATE_WAITING_FOR_TAG:
+			Command, Data = self.waitForEvents([ CommandIds["COMMAND_RFID_READ_EVENT"] ])
+			if CommandIds["COMMAND_RFID_READ_EVENT"] == Command:
+				print "Got Tag Number " + str(Data) + ", now we wait for a button"
+				self.state = dispenserManager.STATE_WAITING_FOR_BUTTON
+
+                elif self.state == dispenserManager.STATE_WAITING_FOR_BUTTON:
+			print "Skipping waiting for a button for now"
+			print "Dispensing..."
+			if False == self.port.sendAndConfirmCommand(CommandIds["COMMAND_SERVO_MOVE"], [ 10, 45]):
+				print "Failure commanding servo"
+				self.state = dispenserManager.STATE_WAITING_FOR_TAG
+			sleep(1)
+			if False == self.port.sendAndConfirmCommand(CommandIds["COMMAND_SERVO_MOVE"], [ 10, 135]):
+				print "Failure commanding servo"
+				self.state = dispenserManager.STATE_WAITING_FOR_TAG
+			print "Dispensing complete"
+			self.state = dispenserManager.STATE_WAITING_FOR_TAG
 
 
 
-	def serviceStateMachine():
-		if self.state == STATE_STARTUP:
-			print "a"
-		elif self.state == STATE_WAITING_FOR_TAG:
-			print "a"
-                elif self.state == STATE_WAITING_FOR_BUTTON:
-			print "a"
-                elif self.state == STATE_WAITING_FOR_SERVO:
-			print "a"
-
-
-port = PortProtocol();
-port.createAndOpenPort()
-
+manager = dispenserManager()
+manager.run()
 
 #1 is OUTPUT
+
 #0 is INPUT
 #port.sendAndConfirmCommand(CommandIds["COMMAND_GPIO_SET_MODE"], [ 30, 0])
 #port.sendAndConfirmCommand(CommandIds["COMMAND_GPIO_SET_MODE"], [ 31, 0])
@@ -223,8 +264,8 @@ port.createAndOpenPort()
 #port.sendAndConfirmCommand(CommandIds["COMMAND_GPIO_SET_MODE"], [ 38, 0])
 #port.sendAndConfirmCommand(CommandIds["COMMAND_GPIO_SET_MODE"], [ 39, 0])
 
-while (True):
-	port.readResponse()
+#while (True):
+#	port.readResponse()
 
 #print port.sendAndConfirmCommand(CommandIds["COMMAND_SERVO_MOVE"], [ 10, 90])
 #print port.sendAndConfirmCommand(CommandIds["COMMAND_SERVO_MOVE"], [ 10, 30])
