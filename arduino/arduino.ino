@@ -74,7 +74,7 @@ unsigned long timeSince(unsigned long timestamp)
   }
 }
 
-#define DEBOUNCE_TIME 250
+#define DEBOUNCE_TIME 50
 enum PIN_STATE
 {
   PIN_STATE_LOW,

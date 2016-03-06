@@ -271,6 +271,8 @@ class dispenserManager():
 		self.port.createAndOpenPort('/dev/ttyACM2')
 		sleep(5)
 		self.port.sendAndConfirmCommand(CommandIds["COMMAND_SERVO_MOVE"], [ 10, 135])
+		self.port.sendAndConfirmCommand(CommandIds["COMMAND_GPIO_SET_MODE"], [ 40, 0])
+                self.port.sendAndConfirmCommand(CommandIds["COMMAND_GPIO_SET_MODE"], [ 41, 1])
 		return True
 
 	def waitForEvents(self, events = []):
@@ -307,21 +309,28 @@ class dispenserManager():
 				else:
 					print "Unauthorized Tag " + nuid + ", Ignoring."
 					db.addTagEvent(nuid,0,0,"Unknown")
-					self.state == dispenserManager.STATE_WAITING_FOR_TAG
+					self.port.sendAndConfirmCommand(CommandIds["COMMAND_GPIO_WRITE"], [ 41, 1])
+					#TODO take out this hack
+					self.state = dispenserManager.STATE_WAITING_FOR_BUTTON
 
 
                 elif self.state == dispenserManager.STATE_WAITING_FOR_BUTTON:
-			print "Skipping waiting for a button for now"
-			print "Dispensing..."
-			if False == self.port.sendAndConfirmCommand(CommandIds["COMMAND_SERVO_MOVE"], [ 10, 45]):
-				print "Failure commanding servo"
+			print "Waiting for a button for now"
+			Command, Data = self.waitForEvents([ CommandIds["COMMAND_GPIO_INPUT_EVENT"] ])
+			if CommandIds["COMMAND_GPIO_INPUT_EVENT"] == Command:
+				print Data
+				
+				self.port.sendAndConfirmCommand(CommandIds["COMMAND_GPIO_WRITE"], [ 41, 0])
+				print "Dispensing..."
+				if False == self.port.sendAndConfirmCommand(CommandIds["COMMAND_SERVO_MOVE"], [ 10, 45]):
+					print "Failure commanding servo"
+					self.state = dispenserManager.STATE_WAITING_FOR_TAG
+				sleep(1)
+				if False == self.port.sendAndConfirmCommand(CommandIds["COMMAND_SERVO_MOVE"], [ 10, 135]):
+					print "Failure commanding servo"
+					self.state = dispenserManager.STATE_WAITING_FOR_TAG
+				print "Dispensing complete"
 				self.state = dispenserManager.STATE_WAITING_FOR_TAG
-			sleep(1)
-			if False == self.port.sendAndConfirmCommand(CommandIds["COMMAND_SERVO_MOVE"], [ 10, 135]):
-				print "Failure commanding servo"
-				self.state = dispenserManager.STATE_WAITING_FOR_TAG
-			print "Dispensing complete"
-			self.state = dispenserManager.STATE_WAITING_FOR_TAG
 
 
 
