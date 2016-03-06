@@ -254,12 +254,15 @@ def BufferToHexString(data):
 	return hexString
 
 class dispenserManager():
-	STATE_STARTUP            = 1
-	STATE_WAITING_FOR_TAG    = 2
-	STATE_WAITING_FOR_BUTTON = 3
+	STATE_STARTUP                         = 1
+	STATE_WAITING_FOR_AUTHORIZATION       = 2
+        STATE_PREPARING_FOR_PRODUCT_SELECTION = 3
+	STATE_WAITING_FOR_PRODUCT_SELECTION   = 4
+	STATE_DISPENSING_PRODUCT              = 5
 
 	port = None
 	state = None
+	selectionStartTimestamp = None
 
 	def run(self):
 		self.state = dispenserManager.STATE_STARTUP
@@ -275,8 +278,9 @@ class dispenserManager():
                 self.port.sendAndConfirmCommand(CommandIds["COMMAND_GPIO_SET_MODE"], [ 41, 1])
 		return True
 
-	def waitForEvents(self, events = []):
-		while(True): #perhaps we need to have a timeout here?
+	def waitForEvents(self, events = [], timeout = None):
+		startTimestamp = time()
+		while(True):
 			Complete, Command, Data = self.port.readResponse()
 			if Complete:
 				if events == []:
@@ -286,17 +290,23 @@ class dispenserManager():
 					#Return the event if that was what we were looking for
 					return Command, Data
 				#Else keep on waiting
+			if timeout != None:
+				if TimeSince(startTimestamp) >= timeout:
+					break
+		return None, []
+
 
 	def serviceStateMachine(self):
 		if self.state == dispenserManager.STATE_STARTUP:
 			if True == self.setup():
 				print "Setup complete"
 				print "Waiting for a Tag"
-				self.state = dispenserManager.STATE_WAITING_FOR_TAG
+				self.state = dispenserManager.STATE_WAITING_FOR_AUTHORIZATION
 			else:
 				print "Setup failed"
 				exit(1)
-		elif self.state == dispenserManager.STATE_WAITING_FOR_TAG:
+
+		elif self.state == dispenserManager.STATE_WAITING_FOR_AUTHORIZATION:
 			Command, Data = self.waitForEvents([ CommandIds["COMMAND_RFID_READ_EVENT"] ])
 			if CommandIds["COMMAND_RFID_READ_EVENT"] == Command:
 				nuid = BufferToHexString(Data)
@@ -305,32 +315,46 @@ class dispenserManager():
 				if (True == Authorized):
 					print "Authorized"
         	                        print "Got Tag Number " + nuid + ", now we wait for a button"
-	                                self.state = dispenserManager.STATE_WAITING_FOR_BUTTON
+	                                self.state = dispenserManager.STATE_PREPARING_FOR_PRODUCT_SELECTION
 				else:
 					print "Unauthorized Tag " + nuid + ", Ignoring."
 					db.addTagEvent(nuid,0,0,"Unknown")
-					self.port.sendAndConfirmCommand(CommandIds["COMMAND_GPIO_WRITE"], [ 41, 1])
 					#TODO take out this hack
-					self.state = dispenserManager.STATE_WAITING_FOR_BUTTON
+					self.state = dispenserManager.STATE_PREPARING_FOR_PRODUCT_SELECTION
 
 
-                elif self.state == dispenserManager.STATE_WAITING_FOR_BUTTON:
+		elif self.state == dispenserManager.STATE_PREPARING_FOR_PRODUCT_SELECTION:
+			print "Preparing for product selection"
+			self.port.sendAndConfirmCommand(CommandIds["COMMAND_GPIO_WRITE"], [ 41, 1])
+			self.selectionStartTimestamp = time()
+			self.state = dispenserManager.STATE_WAITING_FOR_PRODUCT_SELECTION
+
+
+                elif self.state == dispenserManager.STATE_WAITING_FOR_PRODUCT_SELECTION:
 			print "Waiting for a button for now"
-			Command, Data = self.waitForEvents([ CommandIds["COMMAND_GPIO_INPUT_EVENT"] ])
-			if CommandIds["COMMAND_GPIO_INPUT_EVENT"] == Command:
-				print Data
-				
+			Command, Data = self.waitForEvents([ CommandIds["COMMAND_GPIO_INPUT_EVENT"] ],1)
+			if TimeSince(self.selectionStartTimestamp) > 5:
 				self.port.sendAndConfirmCommand(CommandIds["COMMAND_GPIO_WRITE"], [ 41, 0])
-				print "Dispensing..."
-				if False == self.port.sendAndConfirmCommand(CommandIds["COMMAND_SERVO_MOVE"], [ 10, 45]):
-					print "Failure commanding servo"
-					self.state = dispenserManager.STATE_WAITING_FOR_TAG
-				sleep(1)
-				if False == self.port.sendAndConfirmCommand(CommandIds["COMMAND_SERVO_MOVE"], [ 10, 135]):
-					print "Failure commanding servo"
-					self.state = dispenserManager.STATE_WAITING_FOR_TAG
-				print "Dispensing complete"
-				self.state = dispenserManager.STATE_WAITING_FOR_TAG
+				self.state = dispenserManager.STATE_WAITING_FOR_AUTHORIZATION
+			if CommandIds["COMMAND_GPIO_INPUT_EVENT"] == Command:
+				if Data == [0, 0, 40, 1]:
+					self.port.sendAndConfirmCommand(CommandIds["COMMAND_GPIO_WRITE"], [ 41, 0])
+                                	self.state = dispenserManager.STATE_DISPENSING_PRODUCT
+
+
+                elif self.state == dispenserManager.STATE_DISPENSING_PRODUCT:
+			print "Dispensing..."
+			if False == self.port.sendAndConfirmCommand(CommandIds["COMMAND_SERVO_MOVE"], [ 10, 45]):
+				print "Failure commanding servo"
+				self.state = dispenserManager.STATE_WAITING_FOR_AUTHORIZATION
+				return
+			sleep(1)
+			if False == self.port.sendAndConfirmCommand(CommandIds["COMMAND_SERVO_MOVE"], [ 10, 135]):
+				print "Failure commanding servo"
+				self.state = dispenserManager.STATE_WAITING_FOR_AUTHORIZATION
+				return
+			print "Dispensing complete"
+			self.state = dispenserManager.STATE_WAITING_FOR_AUTHORIZATION
 
 
 
